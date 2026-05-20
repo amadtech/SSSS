@@ -1,0 +1,84 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Cairo", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --color-sleek-bg: #05070a;
+  --color-sleek-aside: #0a0f18;
+  --color-sleek-card: #0e141f;
+  --color-sleek-accent: #10b981;
+
+  /* Overriding standard slate values with premium Sleek theme variables */
+  --color-slate-950: #0a0f18;
+  --color-slate-900: #0e141f;
+  --color-slate-800: rgba(255, 255, 255, 0.05);
+  --color-slate-700: rgba(255, 255, 255, 0.1);
+  --color-slate-600: rgba(255, 255, 255, 0.15);
+  --color-slate-500: #8ba3c7;
+  --color-slate-400: #cbd5e1;
+  --color-slate-300: #f1f5f9;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #05070a;
+  color: #e2e8f0;
+  direction: rtl;
+}
+
+/* Custom scrollbar styling for extra sleekness */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #05070a;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(16, 185, 129, 0.3);
+}
+
+/* Glowing system-health indicator shadows */
+.glow-green {
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
+}
+.glow-amber {
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
+}
+.glow-red {
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.5);
+}
+
+.glow-blue {
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+}
+
+/* Grid scanning background for a beautiful datacenter/cyber theme */
+.cyber-grid {
+  background-image: linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Printable PDF sheets */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: white !important;
+    color: black !important;
+    direction: rtl;
+  }
+  .print-card {
+    border: 1px solid #ccc !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    color: black !important;
+  }
+}

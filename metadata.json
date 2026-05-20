@@ -1,0 +1,6 @@
+{
+  "name": "AIN v2 NMS",
+  "description": "نظام إدارة ومراقبة الشبكات الذكي والآمن للمؤسسات والجهات الحساسة بالمملكة العربية السعودية، مراقبة حية، تحليل NetFlow، طوبولوجيا تفاعلية ومساعد ذكي محلي",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
