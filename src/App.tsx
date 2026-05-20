@@ -109,6 +109,55 @@ export default function App() {
     return false;
   };
 
+  const handleDeleteDevice = async (deviceId: string) => {
+    try {
+      const res = await fetch(`/api/devices/${deviceId}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        setDevices(prev => prev.filter(d => d.id !== deviceId));
+      }
+    } catch (e) {
+      console.error('Error deleting device:', e);
+    }
+  };
+
+  const handlePingDevice = async (deviceId: string) => {
+    try {
+      const res = await fetch(`/api/devices/ping/${deviceId}`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.device) {
+          setDevices(prev => prev.map(d => d.id === deviceId ? data.device : d));
+          return data;
+        }
+      }
+    } catch (e) {
+      console.error('Error diagnostic ping:', e);
+    }
+    return null;
+  };
+
+  const handleUpdateDevice = async (deviceId: string, updatedFields: any) => {
+    try {
+      const res = await fetch(`/api/devices/${deviceId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedFields)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.device) {
+          setDevices(prev => prev.map(d => d.id === deviceId ? data.device : d));
+        }
+      }
+    } catch (e) {
+      console.error('Error updating device:', e);
+    }
+  };
+
   // Helper inside AI assistant to trigger physical map filters
   const handleHighlightRegion = (region: any) => {
     setSelectedRegion(region);
@@ -281,6 +330,9 @@ export default function App() {
             <DevicesManager 
               devices={devices}
               onAddDevice={handleAddDevice}
+              onDeleteDevice={handleDeleteDevice}
+              onPingDevice={handlePingDevice}
+              onUpdateDevice={handleUpdateDevice}
               selectedRegion={selectedRegion}
             />
           )}

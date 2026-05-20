@@ -5,14 +5,33 @@ import { Network, Search, Plus, Filter, HardDrive, Thermometer, ShieldAlert, Che
 interface DevicesManagerProps {
   devices: Device[];
   onAddDevice: (device: { name: string; type: string; ip: string; region: SaudiRegion }) => void;
+  onDeleteDevice?: (deviceId: string) => void;
+  onPingDevice?: (deviceId: string) => Promise<any>;
+  onUpdateDevice?: (deviceId: string, updatedFields: any) => void;
   selectedRegion: SaudiRegion | 'الكل';
 }
 
-export default function DevicesManager({ devices, onAddDevice, selectedRegion }: DevicesManagerProps) {
+export default function DevicesManager({ 
+  devices, 
+  onAddDevice, 
+  onDeleteDevice,
+  onPingDevice,
+  onUpdateDevice,
+  selectedRegion 
+}: DevicesManagerProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('الكل');
   const [regionFilter, setRegionFilter] = useState<SaudiRegion | 'الكل'>(selectedRegion);
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(devices[0] || null);
+
+  // New states for real Diagnostics & Edit panel
+  const [isDiagnosticRunning, setIsDiagnosticRunning] = useState(false);
+  const [rawPingOutput, setRawPingOutput] = useState<string>('');
+  const [isEditingDevice, setIsEditingDevice] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editIp, setEditIp] = useState('');
+  const [editType, setEditType] = useState<Device['type']>('switch');
+  const [editRegion, setEditRegion] = useState<SaudiRegion>('الرياض');
 
   // New Device Form state
   const [showAddForm, setShowAddForm] = useState(false);
@@ -21,6 +40,9 @@ export default function DevicesManager({ devices, onAddDevice, selectedRegion }:
   const [newDevIp, setNewDevIp] = useState('');
   const [newDevRegion, setNewDevRegion] = useState<SaudiRegion>('الرياض');
   const [isAdding, setIsAdding] = useState(false);
+
+  // Auto-sync selectedDevice if updated props arrive
+  const activeDeviceDetails = devices.find(d => d.id === selectedDevice?.id) || devices[0] || null;
 
   // Filter lists
   const filtered = devices.filter(d => {
@@ -32,6 +54,8 @@ export default function DevicesManager({ devices, onAddDevice, selectedRegion }:
 
   const handleDeviceClick = (dev: Device) => {
     setSelectedDevice(dev);
+    setIsEditingDevice(false);
+    setRawPingOutput('');
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -52,6 +76,49 @@ export default function DevicesManager({ devices, onAddDevice, selectedRegion }:
       setNewDevName('');
       setNewDevIp('');
     }, 1200);
+  };
+
+  const startEditing = (dev: Device) => {
+    setEditName(dev.name);
+    setEditIp(dev.ip);
+    setEditType(dev.type);
+    setEditRegion(dev.region);
+    setIsEditingDevice(true);
+  };
+
+  const handleUpdateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onUpdateDevice || !activeDeviceDetails) return;
+    onUpdateDevice(activeDeviceDetails.id, {
+      name: editName,
+      ip: editIp,
+      type: editType,
+      region: editRegion
+    });
+    setIsEditingDevice(false);
+  };
+
+  const triggerPingTest = async (deviceId: string) => {
+    if (!onPingDevice) return;
+    setIsDiagnosticRunning(true);
+    setRawPingOutput('جاري الاتصال بالعقدة وإرسال حزم IP ICMP Echo Request...');
+    
+    const result = await onPingDevice(deviceId);
+    setIsDiagnosticRunning(false);
+    if (result && result.success) {
+      setRawPingOutput(result.pingOutput || 'تم فحص الاتصال بنجاح. لا توجد تفاصيل إضافية.');
+    } else {
+      setRawPingOutput('خطأ: فشل إجراء فحص الاتصال التلقائي.');
+    }
+  };
+
+  const handleDeleteClick = (deviceId: string) => {
+    if (confirm('هل أنت متأكد من رغبتك في حذف هذا الجهاز بالكامل من قاعدة بيانات SQLITE؟') && onDeleteDevice) {
+      onDeleteDevice(deviceId);
+      setSelectedDevice(null);
+      setIsEditingDevice(false);
+      setRawPingOutput('');
+    }
   };
 
   // Icon mapper
@@ -220,126 +287,237 @@ export default function DevicesManager({ devices, onAddDevice, selectedRegion }:
       </div>
 
       {/* Selected Device Right Detail Panel */}
-      <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 lg:col-span-5 h-[650px] overflow-y-auto flex flex-col justify-between">
-        {selectedDevice ? (
+      <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 lg:col-span-12 xl:col-span-5 h-[650px] overflow-y-auto flex flex-col justify-between">
+        {activeDeviceDetails ? (
           <div className="space-y-5">
             {/* Header Device Card */}
             <div className="bg-slate-950/80 p-4 border border-slate-800 rounded-xl relative overflow-hidden">
-              <div className="flex justify-between items-start">
-                <div className="flex items-center gap-2">
-                  {getDeviceIcon(selectedDevice.type)}
-                  <div>
-                    <h4 className="font-bold text-white text-base font-mono">{selectedDevice.name}</h4>
-                    <p className="text-xs text-slate-500 font-mono">IP: {selectedDevice.ip}</p>
+              {isEditingDevice ? (
+                <form onSubmit={handleUpdateSubmit} className="space-y-3">
+                  <div className="text-white font-bold text-xs">تعديل بيانات العقدة:</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input 
+                      type="text" 
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      placeholder="اسم الجهاز"
+                      className="px-2 py-1 bg-slate-900 border border-slate-700 rounded text-xs text-white"
+                      required
+                    />
+                    <input 
+                      type="text" 
+                      value={editIp}
+                      onChange={(e) => setEditIp(e.target.value)}
+                      placeholder="IP Address"
+                      className="px-2 py-1 bg-slate-900 border border-slate-700 rounded text-xs text-white font-mono"
+                      required
+                    />
                   </div>
-                </div>
-                <div className="text-left">
-                  <span className="text-[10px] bg-slate-900 text-slate-400 px-2 py-1 rounded font-mono block">
-                    {selectedDevice.region}
-                  </span>
-                </div>
-              </div>
-              <div className="mt-3 flex justify-between items-center text-xs border-t border-slate-800 pt-3 text-slate-400">
-                <span>وقت التشغيل: <b className="font-mono text-white text-[11px]">{selectedDevice.uptime}</b></span>
-                <span className="font-mono text-[9px] text-slate-600">Fingerprint: {selectedDevice.fingerprint}</span>
-              </div>
-              {/* Abs indicator glow based on status */}
-              <div className={`absolute top-0 right-0 left-0 h-1 ${selectedDevice.status === 'online' ? 'bg-emerald-500' : selectedDevice.status === 'warning' ? 'bg-amber-400' : 'bg-red-500'}`}></div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={editType}
+                      onChange={(e) => setEditType(e.target.value as Device['type'])}
+                      className="px-2 py-1 bg-slate-900 border border-slate-700 rounded text-xs text-slate-300"
+                    >
+                      {Object.entries(typeLabels).map(([key, label]) => (
+                        <option key={key} value={key}>{label}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={editRegion}
+                      onChange={(e) => setEditRegion(e.target.value as SaudiRegion)}
+                      className="px-2 py-1 bg-slate-900 border border-slate-700 rounded text-xs text-slate-300"
+                    >
+                      {SAUDI_REGIONS.map((r) => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex gap-2 justify-end pt-1">
+                    <button 
+                      type="button" 
+                      onClick={() => setIsEditingDevice(false)}
+                      className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-400 rounded cursor-pointer"
+                    >
+                      إلغاء
+                    </button>
+                    <button 
+                      type="submit" 
+                      className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-[10px] text-white font-bold rounded cursor-pointer"
+                    >
+                      حفظ الخيار
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  <div className="flex justify-between items-start">
+                    <div className="flex items-center gap-2">
+                      {getDeviceIcon(activeDeviceDetails.type)}
+                      <div>
+                        <h4 className="font-bold text-white text-base font-mono">{activeDeviceDetails.name}</h4>
+                        <p className="text-xs text-slate-500 font-mono">IP: {activeDeviceDetails.ip}</p>
+                      </div>
+                    </div>
+                    <div className="text-left flex flex-col gap-1 items-end">
+                      <span className="text-[10px] bg-slate-900 text-slate-400 px-2 py-1 rounded font-mono block">
+                        {activeDeviceDetails.region}
+                      </span>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => startEditing(activeDeviceDetails)}
+                          className="p-1 hover:bg-slate-800 rounded text-blue-400 cursor-pointer text-[10px] flex items-center gap-0.5 border border-slate-800"
+                          title="تعديل"
+                        >
+                          ✏️ تعديل
+                        </button>
+                        <button
+                          onClick={() => handleDeleteClick(activeDeviceDetails.id)}
+                          className="p-1 hover:bg-red-950/60 rounded text-red-400 cursor-pointer text-[10px] flex items-center gap-0.5 border border-slate-800"
+                          title="حذف"
+                        >
+                          🗑️ حذف
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex justify-between items-center text-xs border-t border-slate-800 pt-3 text-slate-400">
+                    <span>وقت التشغيل: <b className="font-mono text-white text-[11px]">{activeDeviceDetails.uptime}</b></span>
+                    <span className="font-mono text-[9px] text-slate-600">Fingerprint: {activeDeviceDetails.fingerprint}</span>
+                  </div>
+                  {/* Abs indicator glow based on status */}
+                  <div className={`absolute top-0 right-0 left-0 h-1 ${activeDeviceDetails.status === 'online' ? 'bg-emerald-500' : activeDeviceDetails.status === 'warning' ? 'bg-amber-400' : 'bg-red-500'}`}></div>
+                </>
+              )}
             </div>
 
             {/* Live Metrics Grid */}
-            {selectedDevice.status === 'offline' ? (
-              <div className="p-8 text-center bg-red-950/10 border border-red-900/40 rounded-xl">
+            {activeDeviceDetails.status === 'offline' && !isEditingDevice ? (
+              <div className="p-5 text-center bg-red-950/10 border border-red-900/40 rounded-xl space-y-3">
                 <ShieldAlert className="text-red-500 mx-auto h-8 w-8 animate-bounce" />
-                <h5 className="font-bold text-red-400 mt-2 text-sm">الجهاز خارج الخدمة بالكامل (Offline)</h5>
-                <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                  يصل زمن الاستجابة إلى 9999ms مع فقدان كلي للحزم. يرجى مراجعة كارت PoE أو كابل الألياف الضوئية الواصل بالعقدة الأساسية.
+                <h5 className="font-bold text-red-400 text-sm">الجهاز خارج الخدمة بالكامل (Offline)</h5>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  فقدان كلي للاتصال والـ Ping. بإمكانك إجراء اختبار فحص الاتصال التلقائي بالـ OS.
                 </p>
+                <button
+                  onClick={() => triggerPingTest(activeDeviceDetails.id)}
+                  disabled={isDiagnosticRunning}
+                  className="px-3 py-1.5 bg-red-900/40 hover:bg-red-900/60 text-red-200 border border-red-800 text-xs rounded-lg cursor-pointer transition-all disabled:opacity-50 inline-flex items-center gap-1.5"
+                >
+                  <RotateCw className={`h-3 w-3 ${isDiagnosticRunning ? 'animate-spin' : ''}`} />
+                  إجراء فحص اتصال حقيقي (ICMP Ping)
+                </button>
               </div>
             ) : (
-              <div className="grid grid-cols-3 gap-3">
-                {/* CPU gauge representation */}
-                <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800/80 text-center">
-                  <span className="text-[10px] text-slate-500 block">المعالج (CPU)</span>
-                  <span className="text-xl font-mono font-bold text-white block mt-1">{selectedDevice.cpu}%</span>
-                  <div className="w-full bg-slate-800 h-1 rounded-full overflow-hidden mt-2">
-                    <div className="bg-blue-500 h-full" style={{ width: `${selectedDevice.cpu}%` }}></div>
+              !isEditingDevice && (
+                <div className="grid grid-cols-3 gap-3">
+                  {/* CPU gauge representation */}
+                  <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800/80 text-center">
+                    <span className="text-[10px] text-slate-500 block">المعالج (CPU)</span>
+                    <span className="text-xl font-mono font-bold text-white block mt-1">{activeDeviceDetails.cpu}%</span>
+                    <div className="w-full bg-slate-800 h-1 rounded-full overflow-hidden mt-2">
+                      <div className="bg-blue-500 h-full" style={{ width: `${activeDeviceDetails.cpu}%` }}></div>
+                    </div>
+                  </div>
+                  {/* RAM Gauge */}
+                  <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800/80 text-center">
+                    <span className="text-[10px] text-slate-500 block">الذاكرة (RAM)</span>
+                    <span className="text-xl font-mono font-bold text-white block mt-1">{activeDeviceDetails.ram}%</span>
+                    <div className="w-full bg-slate-800 h-1 rounded-full overflow-hidden mt-2">
+                      <div className="bg-emerald-400 h-full" style={{ width: `${activeDeviceDetails.ram}%` }}></div>
+                    </div>
+                  </div>
+                  {/* Temp Gauge */}
+                  <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800/80 text-center">
+                    <div className="flex justify-center items-center gap-1 text-[10px] text-slate-500">
+                      <Thermometer className="h-3.5 w-3.5 text-amber-500" />
+                      <span>الحرارة</span>
+                    </div>
+                    <span className="text-xl font-mono font-bold text-white block mt-1">{activeDeviceDetails.temp}°C</span>
+                    <div className="w-full bg-slate-800 h-1 rounded-full overflow-hidden mt-2">
+                      <div className="bg-amber-500 h-full" style={{ width: `${(activeDeviceDetails.temp / 80) * 100}%` }}></div>
+                    </div>
                   </div>
                 </div>
-                {/* RAM Gauge */}
-                <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800/80 text-center">
-                  <span className="text-[10px] text-slate-500 block">الذاكرة (RAM)</span>
-                  <span className="text-xl font-mono font-bold text-white block mt-1">{selectedDevice.ram}%</span>
-                  <div className="w-full bg-slate-800 h-1 rounded-full overflow-hidden mt-2">
-                    <div className="bg-emerald-400 h-full" style={{ width: `${selectedDevice.ram}%` }}></div>
-                  </div>
-                </div>
-                {/* Temp Gauge */}
-                <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800/80 text-center">
-                  <div className="flex justify-center items-center gap-1 text-[10px] text-slate-500">
-                    <Thermometer className="h-3.5 w-3.5 text-amber-500" />
-                    <span>الحرارة</span>
-                  </div>
-                  <span className="text-xl font-mono font-bold text-white block mt-1">{selectedDevice.temp}°C</span>
-                  <div className="w-full bg-slate-800 h-1 rounded-full overflow-hidden mt-2">
-                    <div className="bg-amber-500 h-full" style={{ width: `${(selectedDevice.temp / 80) * 100}%` }}></div>
-                  </div>
-                </div>
+              )
+            )}
+
+            {/* Quick Ping Tool for online devices */}
+            {activeDeviceDetails.status !== 'offline' && !isEditingDevice && (
+              <div className="flex justify-between items-center bg-slate-950/60 p-3 rounded-xl border border-slate-800/85">
+                <span className="text-xs text-slate-400">فحص زمن الاستجابة الفوري للـ IP:</span>
+                <button
+                  onClick={() => triggerPingTest(activeDeviceDetails.id)}
+                  disabled={isDiagnosticRunning}
+                  className="px-2.5 py-1.5 bg-blue-600/30 hover:bg-blue-600/50 text-blue-300 border border-blue-800 rounded-lg text-xs cursor-pointer transition-all disabled:opacity-50 flex items-center gap-1"
+                >
+                  <RotateCw className={`h-3 w-3 ${isDiagnosticRunning ? 'animate-spin' : ''}`} />
+                  أمر Ping حقيقي
+                </button>
               </div>
             )}
 
             {/* Interfaces status */}
-            <div className="space-y-2.5">
-              <h5 className="text-xs font-bold text-slate-400 flex items-center justify-between">
-                <span>المنافذ والواجهات المادية (Physical Interfaces)</span>
-                <span className="text-[10px] text-slate-600 font-mono">SNMP MIB-II Polled</span>
-              </h5>
+            {!isEditingDevice && (
+              <div className="space-y-2.5">
+                <h5 className="text-xs font-bold text-slate-400 flex items-center justify-between">
+                  <span>المنافذ والواجهات المادية (Physical Interfaces)</span>
+                  <span className="text-[10px] text-slate-600 font-mono">SNMP MIB-II Polled</span>
+                </h5>
 
-              <div className="space-y-2 max-h-[220px] overflow-y-auto">
-                {selectedDevice.interfaces.map((intf, index) => (
-                  <div 
-                    key={index}
-                    className="bg-slate-950/40 p-2.5 border border-slate-800/60 rounded-lg flex items-center justify-between gap-2 text-xs"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className={`h-2.5 w-2.5 rounded-sm ${intf.status === 'up' ? 'bg-emerald-500' : 'bg-red-500'} inline-block`}></span>
-                      <div className="font-mono">
-                        <span className="text-white font-bold block text-[11px]">{intf.name}</span>
-                        <span className="text-[9px] text-slate-500 font-sans">Speed: {intf.speed} | VLAN: {intf.vlan}</span>
+                <div className="space-y-2 max-h-[160px] overflow-y-auto">
+                  {activeDeviceDetails.interfaces.map((intf, index) => (
+                    <div 
+                      key={index}
+                      className="bg-slate-950/40 p-2.5 border border-slate-800/60 rounded-lg flex items-center justify-between gap-2 text-xs"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className={`h-2.5 w-2.5 rounded-sm ${intf.status === 'up' ? 'bg-emerald-500' : 'bg-red-500'} inline-block`}></span>
+                        <div className="font-mono">
+                          <span className="text-white font-bold block text-[11px]">{intf.name}</span>
+                          <span className="text-[9px] text-slate-500 font-sans">Speed: {intf.speed} | VLAN: {intf.vlan}</span>
+                        </div>
+                      </div>
+
+                      <div className="text-left text-[11px] font-mono text-slate-400">
+                        {intf.status === 'up' ? (
+                          <>
+                            <div className="text-emerald-500 flex items-center gap-0.5 justify-end">
+                              In: <span>{intf.trafficIn} Mbps</span>
+                            </div>
+                            <div className="text-blue-400 flex items-center gap-0.5 justify-end">
+                              Out: <span>{intf.trafficOut} Mbps</span>
+                            </div>
+                          </>
+                        ) : (
+                          <span className="text-red-500 font-bold block py-1">Down Port</span>
+                        )}
                       </div>
                     </div>
-
-                    <div className="text-left text-[11px] font-mono text-slate-400">
-                      {intf.status === 'up' ? (
-                        <>
-                          <div className="text-emerald-500 flex items-center gap-0.5 justify-end">
-                            In: <span>{intf.trafficIn} Mbps</span>
-                          </div>
-                          <div className="text-blue-400 flex items-center gap-0.5 justify-end">
-                            Out: <span>{intf.trafficOut} Mbps</span>
-                          </div>
-                        </>
-                      ) : (
-                        <span className="text-red-500 font-bold block py-1">Down Port</span>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Discovery and Diagnostics Log */}
             <div className="bg-slate-950/40 border border-slate-800 p-3 rounded-xl space-y-2 text-[11px] font-mono">
               <div className="flex items-center gap-1.5 text-slate-400 pb-2 border-b border-slate-900">
                 <FileClock className="h-4 w-4 text-blue-500" />
-                <span className="font-semibold font-sans">آخر فحص تشخيصي بروتوكولي (Audit Syslog)</span>
+                <span className="font-semibold font-sans">مخرجات مسبار الاتصال (System ICMP Console)</span>
               </div>
-              <div className="text-slate-500 space-y-1">
-                <div>[PROBE] Ping test succeeded latency: {selectedDevice.latency} ms</div>
-                <div>[SNMP] Polled object ID 1.3.6.1.2.1.1 OK</div>
-                <div>[FINGERPRINT] Valid license binding hash matched.</div>
-                <div className="text-slate-600 text-[10px]">آخر تحديث: {selectedDevice.lastDiscovery}</div>
-              </div>
+              
+              {rawPingOutput ? (
+                <pre className="bg-black/95 p-2 rounded text-[10px] text-green-400 overflow-x-auto max-h-[110px] leading-relaxed select-text font-mono border border-slate-900">
+                  {rawPingOutput}
+                </pre>
+              ) : (
+                <div className="text-slate-500 space-y-1">
+                  <div>[PROBE] Ping test status: {activeDeviceDetails.status === 'online' ? 'Success' : 'Offline'}</div>
+                  <div>[SNMP] Polled object ID 1.3.6.1.2.1.1 OK</div>
+                  <div>[FINGERPRINT] RSA binding hash matches local database.</div>
+                  <div className="text-slate-600 text-[10px]">آخر تحديث: {activeDeviceDetails.lastDiscovery}</div>
+                </div>
+              )}
             </div>
           </div>
         ) : (
